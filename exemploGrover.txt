@@ -1,0 +1,117 @@
+namespace Quantum.Demo {
+    open Microsoft.Quantum.Convert;
+    open Microsoft.Quantum.Math;
+    open Microsoft.Quantum.Arrays;
+    open Microsoft.Quantum.Measurement;
+    open Microsoft.Quantum.Diagnostics;
+    open Microsoft.Quantum.Intrinsic;
+    open Microsoft.Quantum.Random;
+
+    @EntryPoint()
+    operation Main() : Int {
+        mutable names = ["Alice", "Bob", "Charlie", "David", "Eve", "Frank", "Grace", "Heidi", "Ivan", "Peter"];
+        let nQubits = 4; // 2^4 = 16, suficiente para 10 nomes pois 2^3 daria 8
+        let iterations = CalculateOptimalIterations(nQubits);
+        Message($"RESULTADOS DO ULTIMO SHOT");
+        for _ in 1..iterations {
+            // Embaralhar a lista de nomes
+            set names = Shuffle(names);
+           
+            Message($"Lista embaralhada: {names}");
+
+            // Executar a busca de Grover
+            let position = GroverSearch(nQubits, iterations, ReflectAboutPeter, names);
+            Message($"Posição de Peter: {position + 1}");
+        }
+
+        // Imprimir a quantidade de iterações
+        Message($"Quantidade de rounds num shot: {iterations}");
+
+        // Retornar a posição de Peter na última iteração
+        return IndexOf(names, "Peter");
+    }
+
+    operation GroverSearch(
+        nQubits : Int,
+        iterations : Int,
+        phaseOracle : (Qubit[], String[]) => Unit,
+        names : String[]) : Int {
+
+        use qubits = Qubit[nQubits];
+
+        // Inicializar uma superposição uniforme sobre todas as entradas possíveis
+        PrepareUniform(qubits);
+
+        for _ in 1..iterations {
+            phaseOracle(qubits, names);
+            ReflectAboutUniform(qubits);
+        }
+
+        // Medir e retornar a posição
+        let results = MeasureEachZ(qubits);
+        ResetAll(qubits);
+        return ResultArrayAsInt(results);
+    }
+
+    function CalculateOptimalIterations(nQubits : Int) : Int {
+        let nItems = 1 <<< nQubits; // 2^nQubits
+        let angle = ArcSin(1. / Sqrt(IntAsDouble(nItems)));
+        let iterations = Round(0.25 * PI() / angle - 0.5);
+        return iterations;
+    }
+
+    operation ReflectAboutPeter(inputQubits : Qubit[], names : String[]) : Unit {
+        let peterIndex = IndexOf(names, "Peter");
+        within {
+            for idx in 0..Length(inputQubits) - 1 {
+                if peterIndex &&& (1 <<< idx) == 0 {
+                    X(inputQubits[idx]);
+                }
+            }
+        } apply {
+            Controlled Z(Most(inputQubits), Tail(inputQubits));
+        }
+    }
+
+    operation PrepareUniform(inputQubits : Qubit[]) : Unit is Adj + Ctl {
+        for q in inputQubits {
+            H(q);
+        }
+    }
+
+    operation ReflectAboutUniform(inputQubits : Qubit[]) : Unit {
+        within {
+            Adjoint PrepareUniform(inputQubits);
+            for q in inputQubits {
+                X(q);
+            }
+        } apply {
+            ReflectAboutAllOnes(inputQubits);
+        }
+    }
+
+    operation ReflectAboutAllOnes(inputQubits : Qubit[]) : Unit {
+        Controlled Z(Most(inputQubits), Tail(inputQubits));
+    }
+
+    operation Shuffle<'T>(array : 'T[]) : 'T[] {
+        let n = Length(array);
+        mutable shuffled = array;
+        for i in 0..n - 1 {
+            let j = DrawRandomInt(0, n - 1);
+            let temp = shuffled[i];
+            set shuffled w/= i <- shuffled[j];
+            set shuffled w/= j <- temp;
+        }
+        return shuffled;
+    }
+
+    function IndexOf(names : String[], target : String) : Int {
+        for i in 0..Length(names) - 1 {
+            if names[i] == target {
+                return i;
+            }
+        }
+        return -1;
+    }
+}
