@@ -1,5 +1,4 @@
-https://quantum.microsoft.com/en-us/experience/quantum-coding
-
+ 
 
 /// # Quantum Hello World!
 ///
